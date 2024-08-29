@@ -12,21 +12,22 @@ namespace GSUnity.Netcode.Serializers
 {
     public class NetcodeCommandDeserializer
     {
-        private const int DefaultInstantiateEntityQueueCapacity = 128;
-        private const int DefaultDestroyEntityQueueCapacity = 128;
+        private const int DefaultInstantiateEntityQueueCapacity = 1024;
+        private const int DefaultDestroyEntityQueueCapacity = 1024;
         
         public readonly NetworkCommandQueue ReceiveQueue;
 
-        private NetcodeClientListener _listener;
+        private NetcodeClient _client;
 
         public uint CommandsReceived, SnapshotsReceived, DeltaStatesReceived;
+        public uint InstantiationsReceived, DestroysReceived;
         
         private volatile bool _isActive;
         private Thread _workerThread;
         
-        public NetcodeCommandDeserializer(NetcodeClientListener listener)
+        public NetcodeCommandDeserializer(NetcodeClient client)
         {
-            _listener = listener;
+            _client = client;
 
             ReceiveQueue = new NetworkCommandQueue(DefaultInstantiateEntityQueueCapacity,
                 DefaultDestroyEntityQueueCapacity);
@@ -50,7 +51,7 @@ namespace GSUnity.Netcode.Serializers
             
             while (_isActive)
             {
-                if (_listener.ReceiveCommandQueue.TryDequeue(out var receiveCommand))
+                if (_client.ReceiveCommandQueue.TryDequeue(out var receiveCommand))
                 {
                     CommandsReceived++;
                     
@@ -92,7 +93,8 @@ namespace GSUnity.Netcode.Serializers
                 },
                 Type = (NetworkEntityType)bitBuffer.ReadByte()
             };
-            
+
+            InstantiationsReceived++;
             ReceiveQueue.InstantiateEntityQueue.Enqueue(new NetworkTransportData<InstantiateEntityCommand>
             {
                 Peer = peer,
@@ -118,22 +120,13 @@ namespace GSUnity.Netcode.Serializers
                     Value = bitBuffer.ReadUInt()
                 }
             };
-                    
+
+            DestroysReceived++;
             ReceiveQueue.DestroyEntityQueue.Enqueue(new NetworkTransportData<DestroyEntityCommand>
             {
                 Peer = peer,
                 Data = destroyEntityCommand
             });
-        }
-
-
-        private static unsafe DataStreamReader GetReader(IntPtr ptr, int length)
-        {
-            var na = NativeArrayUnsafeUtility.ConvertExistingDataToNativeArray<byte>(ptr.ToPointer(), length, Allocator.Invalid);
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-            NativeArrayUnsafeUtility.SetAtomicSafetyHandle(ref na, AtomicSafetyHandle.GetTempMemoryHandle());
-#endif
-            return new DataStreamReader(na);
         }
     }
 }

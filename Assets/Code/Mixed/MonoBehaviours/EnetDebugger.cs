@@ -20,7 +20,6 @@ namespace GSUnity.MonoBehaviours
             {
                 if (world.Flags.HasFlag(_worldFlags) && TryGetNetcodeClientRef(world, out var netcodeClientRef))
                 {
-                    netcodeClientRef.Listener.ElapsedTime += Time.deltaTime;
                     _tmpValues.text = world.Name + GetDebugString(netcodeClientRef);
                 }
             }
@@ -39,15 +38,12 @@ namespace GSUnity.MonoBehaviours
                    $"{netcodeClientRef.Host.PacketsReceived}\n\n" +
                    $"{netcodeClientRef.Host.BytesSent}\n" +
                    $"{netcodeClientRef.Host.BytesReceived}\n\n" +
-                   $"{netcodeClientRef.CommandSerializer.CommandsSent}\n" + 
+                   $"{netcodeClientRef.CommandSerializer.CommandsSent}\n" +
                    $"{netcodeClientRef.CommandDeserializer.CommandsReceived}\n\n" +
-                   $"{netcodeClientRef.Sender.SendCount}\n" +
-                   $"{netcodeClientRef.Listener.ReceiveCount}\n\n" +
-                   $"{netcodeClientRef.Listener.Peer.State}\n\n" +
-                   $"{math.round(netcodeClientRef.Listener.LastListenTime * 10) / 10}\n" +
-                   $"{math.round(netcodeClientRef.Listener.LastEventTime * 10) / 10}\n" +
-                   $"{math.round(netcodeClientRef.Listener.LastReceiveTime * 10) / 10}\n" +
-                   $"{netcodeClientRef.Listener.EventState}:{netcodeClientRef.Listener.ServiceState}";
+                   $"{netcodeClientRef.CommandSerializer.InstantiationsSent}\n" +
+                   $"{netcodeClientRef.CommandDeserializer.InstantiationsReceived}\n\n" +
+                   $"{netcodeClientRef.Client.SendCount}\n" +
+                   $"{netcodeClientRef.Client.ReceiveCount}\n\n";
         }
     }
 }

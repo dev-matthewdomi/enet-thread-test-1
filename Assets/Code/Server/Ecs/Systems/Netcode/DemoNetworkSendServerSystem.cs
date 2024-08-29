@@ -46,12 +46,9 @@ namespace GSUnity.Server.Ecs.Systems.Netcode
             //     }
             // }
             
-            foreach (var (netcodeCommandSendQueueRef, netcodeClientRef) in SystemAPI.Query<NetworkSendCommandQueueRef, NetcodeClientRef>())
+            foreach (var netcodeCommandSendQueueRef in SystemAPI.Query<NetworkSendCommandQueueRef>())
             {
-                if (!netcodeClientRef.Listener.Peer.IsSet)
-                    continue;
-                
-                for (var i = 0; i < 100; i++)
+                for (var i = 0; i < 500; i++)
                 {
                     var instantiateNetworkEntityCommand = new InstantiateEntityCommand
                     {
@@ -60,8 +57,7 @@ namespace GSUnity.Server.Ecs.Systems.Netcode
                     };
                     netcodeCommandSendQueueRef.Value.InstantiateEntityQueue.Enqueue(new NetworkTransportData<InstantiateEntityCommand>
                     {
-                        Data = instantiateNetworkEntityCommand,
-                        Peer = netcodeClientRef.Listener.Peer
+                        Data = instantiateNetworkEntityCommand
                     });
                 }
             }

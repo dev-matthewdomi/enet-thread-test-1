@@ -10,8 +10,7 @@ namespace GSUnity.Ecs.Components.Netcode
     public class NetcodeClientRef : IComponentData
     {
         public Host Host;
-        public NetcodeClientListener Listener;
-        public NetcodeClientSender Sender;
+        public NetcodeClient Client;
 
         public NetcodeCommandSerializer CommandSerializer;
         public NetcodeCommandDeserializer CommandDeserializer;
@@ -29,8 +28,7 @@ namespace GSUnity.Ecs.Components.Netcode
                 return;
             }
             
-            Listener?.Stop();
-            Sender?.Stop();
+            Client?.Stop();
             CommandSerializer?.Stop();
             CommandDeserializer?.Stop();
             
@@ -42,7 +40,8 @@ namespace GSUnity.Ecs.Components.Netcode
 
         private void DisposeHostAfterFinish()
         {
-            while (Sender.IsActive || Listener.IsActive)
+            //while (Sender.IsActive || Listener.IsActive)
+            while (Client.IsActive)
             {
                 Thread.Sleep(10);
             }

@@ -32,14 +32,12 @@ namespace GSUnity.Server.Ecs.Systems.Netcode
                 host.SetBandwidthLimit(1000000000, 1000000000);
 
                 // Network
-                var sender = new NetcodeClientSender(host) { Name = "Server" };
-                var listener = new NetcodeClientListener(host) { Name = "Server" };
-                listener.Start();
-                sender.Start();
+                var client = new NetcodeClient(host) { Name = "Server" };
+                client.Start();
                 
                 // Command Serializers
-                var commandSerializer = new NetcodeCommandSerializer(sender);
-                var commandDeserializer = new NetcodeCommandDeserializer(listener);
+                var commandSerializer = new NetcodeCommandSerializer(client);
+                var commandDeserializer = new NetcodeCommandDeserializer(client);
                 ecb.AddComponent(entity, new NetworkReceiveCommandQueueRef
                 {
                     Value = commandDeserializer.ReceiveQueue
@@ -54,8 +52,7 @@ namespace GSUnity.Server.Ecs.Systems.Netcode
                 ecb.AddComponent(entity, new NetcodeClientRef
                 {
                     Host = host,
-                    Listener = listener,
-                    Sender = sender,
+                    Client = client,
                     CommandSerializer = commandSerializer,
                     CommandDeserializer = commandDeserializer
                 });

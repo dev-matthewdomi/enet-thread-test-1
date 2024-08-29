@@ -3,13 +3,14 @@ using System.Threading;
 using ENet;
 using GSUnity.External;
 using GSUnity.Netcode.Packets;
+using Unity.Collections;
 using UnityEngine;
 using Event = ENet.Event;
 using EventType = ENet.EventType;
 
 namespace GSUnity.Netcode
 {
-    public class NetcodeClientListener
+    public class NetcodeClient
     {
         private const int DefaultPollTimeMs = 15;
         private const int DefaultReceiveConnectionQueueCapacity = 128;
@@ -17,31 +18,36 @@ namespace GSUnity.Netcode
         private const int DefaultReceiveSnapshotQueueCapacity = 2048;
         private const int DefaultReceiveInputQueueCapacity = 2048;
 
+        private const int DefaultSendQueueCapacity = 1024;
+        private const int DefaultBroadcastQueueCapacity = 512;
+        
         public readonly RingBuffer<Event> ReceiveConnectionQueue;
         public readonly RingBuffer<Event> ReceiveCommandQueue;
         public readonly RingBuffer<Event> ReceiveSnapshotQueue;
         public readonly RingBuffer<Event> ReceiveDeltaStateQueue;
         
+        public readonly RingBuffer<SendNetworkData> SendQueue;
+        public readonly RingBuffer<BroadcastNetworkData> BroadcastQueue;
+        
         private readonly int _pollTimeMs;
         private readonly Host _host;
         
-        private volatile bool _isListening;
+        private volatile bool _isActive;
         private Thread _workerThread;
 
         public string Name;
-        public uint ReceiveCount;
-        public Peer Peer;
-        public float LastListenTime, LastEventTime, LastReceiveTime, ElapsedTime;
-        public int EventState, ServiceState, State;
+        public uint ReceiveCount, SendCount;
         
-        public bool IsActive => _workerThread.IsAlive;
+        public bool IsActive => _isActive || _workerThread.IsAlive;
         
-        public NetcodeClientListener(Host host, 
+        public NetcodeClient(Host host, 
             int pollTimeMs = DefaultPollTimeMs, 
             int receiveConnectionQueueCapacity = DefaultReceiveConnectionQueueCapacity, 
             int receiveCommandQueueCapacity = DefaultReceiveCommandQueueCapacity, 
             int receiveSnapshotQueueCapacity = DefaultReceiveSnapshotQueueCapacity, 
-            int receiveInputQueueCapacity = DefaultReceiveInputQueueCapacity)
+            int receiveInputQueueCapacity = DefaultReceiveInputQueueCapacity,
+            int sendQueueCapacity = DefaultSendQueueCapacity,  
+            int broadcastQueueCapacity = DefaultBroadcastQueueCapacity)
         {
             _host = host;
             _pollTimeMs = pollTimeMs;
@@ -50,6 +56,9 @@ namespace GSUnity.Netcode
             ReceiveCommandQueue = new RingBuffer<Event>(receiveCommandQueueCapacity);
             ReceiveSnapshotQueue = new RingBuffer<Event>(receiveSnapshotQueueCapacity);
             ReceiveDeltaStateQueue = new RingBuffer<Event>(receiveInputQueueCapacity);
+            
+            SendQueue = new RingBuffer<SendNetworkData>(sendQueueCapacity);
+            BroadcastQueue = new RingBuffer<BroadcastNetworkData>(broadcastQueueCapacity);
         }
         
         public void Start()
@@ -62,39 +71,64 @@ namespace GSUnity.Netcode
 
         public void Stop()
         {
-            _isListening = false;
+            _isActive = false;
         }
 
         public void ListenLoop()
         {
-            _isListening = true;
-            Debug.Log($"Starting {Name}[{nameof(NetcodeClientListener)}] worker {Thread.CurrentThread.ManagedThreadId}.");
+            _isActive = true;
+            Debug.Log($"Starting {Name}[{nameof(NetcodeClient)}] worker {Thread.CurrentThread.ManagedThreadId}.");
             
-            while (_isListening)
+            while (_isActive)
             {
+                while (SendQueue.TryDequeue(out var sendNetworkData))
+                {
+                    var packet = sendNetworkData.Data.CreatePacket();
+                    if (sendNetworkData.Peer.IsSet)
+                    {        
+                        SendCount++;            
+                        sendNetworkData.Peer.Send(sendNetworkData.ChannelId, ref packet);
+                    }
+                    else
+                    {
+                        SendCount += _host.PeersCount;
+                        _host.Broadcast(sendNetworkData.ChannelId, ref packet);
+                    }
+                }
+                
+                while (BroadcastQueue.TryDequeue(out var broadcastNetworkData))
+                {
+                    SendCount++;
+                    var packet = broadcastNetworkData.Data.CreatePacket();
+                    if (broadcastNetworkData.Peers == default)
+                    {       
+                        SendCount += _host.PeersCount;                 
+                        _host.Broadcast(broadcastNetworkData.ChannelId, ref packet);
+                    }
+                    else
+                    {               
+                        SendCount += (uint)broadcastNetworkData.Peers.Length;    
+                        _host.Broadcast(broadcastNetworkData.ChannelId, ref packet, broadcastNetworkData.Peers.ToArray());
+                    }
+                }
+                
                 var polled = false;
                 while (!polled)
                 {
-                    LastListenTime = ElapsedTime;
-                    EventState = _host.CheckEvents(out var netEvent);
-                    if (EventState <= 0)
+                    if (_host.CheckEvents(out var netEvent) <= 0)
                     {
-                        LastEventTime = ElapsedTime;
-                        ServiceState = _host.Service(_pollTimeMs, out netEvent);
-                        if (ServiceState <= 0)
+                        if (_host.Service(_pollTimeMs, out netEvent) <= 0)
                             break;
                         
                         polled = true;
                     }
 
-                    LastReceiveTime = ElapsedTime;
                     ReceiveCount++;
                     switch (netEvent.Type)
                     {
                         case EventType.Connect:
                         case EventType.Disconnect:
                         case EventType.Timeout:
-                            Peer = netEvent.Peer;
                             ReceiveConnectionQueue.Enqueue(netEvent);
                             break;
                         case EventType.Receive:
@@ -106,47 +140,9 @@ namespace GSUnity.Netcode
                             throw new ArgumentOutOfRangeException();
                     }
                 }
-                
-                // if (Sender.SendQueue.TryDequeue(out var sendNetworkData))
-                // {
-                //     Sender.SendCount++;
-                //     var packet = sendNetworkData.Data.CreatePacket();
-                //     if (sendNetworkData.Peer.IsSet)
-                //     {                    
-                //         //Debug.Log($"Sending data {sendNetworkData.Data.Ptr}[{sendNetworkData.Data.Length}]:{sendNetworkData.Data.PacketFlags} -> {sendNetworkData.ChannelId} -> {sendNetworkData.Peer.ID}");
-                //         sendNetworkData.Peer.Send(sendNetworkData.ChannelId, ref packet);
-                //     }
-                //     else
-                //     {
-                //         //Debug.Log($"Broadcasting peerless data {sendNetworkData.Data.Ptr}[{sendNetworkData.Data.Length}]:{sendNetworkData.Data.PacketFlags} -> {sendNetworkData.ChannelId} -> {_host.PeersCount} peers");
-                //         _host.Broadcast(sendNetworkData.ChannelId, ref packet);
-                //     }
-                //
-                //     //Marshal.FreeHGlobal(sendNetworkData.Data.Ptr);
-                //     continue; 
-                // }
-                //
-                // if (Sender.BroadcastQueue.TryDequeue(out var broadcastNetworkData))
-                // {
-                //     Sender.SendCount++;
-                //     var packet = broadcastNetworkData.Data.CreatePacket();
-                //     if (broadcastNetworkData.Peers == default)
-                //     {                        
-                //         //Debug.Log($"Broadcasting data {broadcastNetworkData.Data.Ptr}[{broadcastNetworkData.Data.Length}]:{broadcastNetworkData.Data.PacketFlags} -> {broadcastNetworkData.ChannelId} -> {_host.PeersCount} peers");
-                //         _host.Broadcast(broadcastNetworkData.ChannelId, ref packet);
-                //     }
-                //     else
-                //     {                   
-                //         //Debug.Log($"Broadcasting data {broadcastNetworkData.Data.Ptr}[{broadcastNetworkData.Data.Length}]:{broadcastNetworkData.Data.PacketFlags} -> {broadcastNetworkData.ChannelId} -> {broadcastNetworkData.Peers.Length} specific peers");
-                //         _host.Broadcast(broadcastNetworkData.ChannelId, ref packet, broadcastNetworkData.Peers.ToArray());
-                //     }
-                //
-                //     //Marshal.FreeHGlobal(broadcastNetworkData.Data.Ptr);
-                //     continue;
-                // }
             }
             
-            Debug.Log($"Stopped {Name}[{nameof(NetcodeClientListener)}] worker {Thread.CurrentThread.ManagedThreadId}.");
+            Debug.Log($"Stopped {Name}[{nameof(NetcodeClient)}] worker {Thread.CurrentThread.ManagedThreadId}.");
         }
 
         private void ReceiveEvent(Event netEvent)
@@ -168,5 +164,34 @@ namespace GSUnity.Netcode
                     break;
             }
         }
+    }
+
+    public struct NetworkPacketData
+    {
+        public byte[] Data;
+        public PacketFlags PacketFlags;
+
+        public Packet CreatePacket()
+        {
+            Packet packet = default;
+            packet.Create(Data, PacketFlags);
+            return packet;
+        }
+    }
+         
+    public struct SendNetworkData
+    {
+        public NetworkPacketData Data;
+             
+        public byte ChannelId;
+        public Peer Peer;
+    }
+
+    public struct BroadcastNetworkData
+    {
+        public NetworkPacketData Data;
+             
+        public byte ChannelId;
+        public NativeArray<Peer> Peers;
     }
 }

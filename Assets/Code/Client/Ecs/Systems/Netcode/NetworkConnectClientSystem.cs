@@ -6,6 +6,7 @@ using GSUnity.Netcode.Serializers;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
+using UnityEngine;
 
 namespace GSUnity.Client.Ecs.Systems.Netcode
 {
@@ -33,30 +34,28 @@ namespace GSUnity.Client.Ecs.Systems.Netcode
                 host.Connect(requestConnect.Address);
 
                 // Network
-                var sender = new NetcodeClientSender(host) { Name = "Client" };
-                var listener = new NetcodeClientListener(host) { Name = "Client" };
-                listener.Start();
-                sender.Start();
+                var client = new NetcodeClient(host) { Name = "Client" };
+                client.Start();
                 
                 // Command Serializers
-                var commandSerializer = new NetcodeCommandSerializer(sender);
-                var commandDeserializer = new NetcodeCommandDeserializer(listener);
+                var commandSerializer = new NetcodeCommandSerializer(client);
+                var commandDeserializer = new NetcodeCommandDeserializer(client);
                 ecb.AddComponent(entity, new NetworkReceiveCommandQueueRef
                 {
                     Value = commandDeserializer.ReceiveQueue
                 });
-                ecb.AddComponent(entity, new NetworkSendCommandQueueRef
-                {
-                    Value = commandSerializer.SendQueue
-                });
+                 ecb.AddComponent(entity, new NetworkSendCommandQueueRef
+                 {
+                     Value = commandSerializer.SendQueue
+                 });
                 commandSerializer.Start();
                 commandDeserializer.Start();
+                
                 
                 ecb.AddComponent(entity, new NetcodeClientRef
                 {
                     Host = host,
-                    Listener = listener,
-                    Sender = sender,
+                    Client = client,
                     CommandSerializer = commandSerializer,
                     CommandDeserializer = commandDeserializer
                 });

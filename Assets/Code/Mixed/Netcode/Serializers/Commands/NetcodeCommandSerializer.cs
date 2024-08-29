@@ -1,11 +1,8 @@
-﻿using System;
-using System.Runtime.InteropServices;
-using System.Threading;
+﻿using System.Threading;
 using ENet;
 using GSUnity.External;
 using GSUnity.Netcode.Packets;
 using GSUnity.Netcode.Packets.Commands;
-using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
 
@@ -18,16 +15,17 @@ namespace GSUnity.Netcode.Serializers
         
         public readonly NetworkCommandQueue SendQueue;
 
-        private NetcodeClientSender _sender;
+        private NetcodeClient _client;
         
         public uint CommandsSent, SnapshotsSent, DeltaStatesSent;
+        public uint InstantiationsSent, DestroysSent;
         
         private volatile bool _isActive;
         private Thread _workerThread;
         
-        public NetcodeCommandSerializer(NetcodeClientSender sender)
+        public NetcodeCommandSerializer(NetcodeClient client)
         {
-            _sender = sender;
+            _client = client;
 
             SendQueue = new NetworkCommandQueue(DefaultInstantiateEntityQueueCapacity,
                 DefaultDestroyEntityQueueCapacity);
@@ -54,12 +52,14 @@ namespace GSUnity.Netcode.Serializers
                 if (SendQueue.InstantiateEntityQueue.TryDequeue(out var sendInstantiateCommand))
                 {
                     CommandsSent++;
+                    InstantiationsSent++;
                     SendInstantiateEntityCommand(sendInstantiateCommand);
                 }
 
                 if (SendQueue.DestroyEntityQueue.TryDequeue(out var sendDestroyCommand))
                 {
                     CommandsSent++;
+                    DestroysSent++;
                     SendDestroyEntityCommand(sendDestroyCommand);
                 }
             }
@@ -80,12 +80,12 @@ namespace GSUnity.Netcode.Serializers
             var bytes = new byte[bitBuffer.Length];
             bitBuffer.ToArray(bytes);
             
-            _sender.SendQueue.Enqueue(new SendNetworkData
+            _client.SendQueue.Enqueue(new SendNetworkData
             {
                 Data = new NetworkPacketData
                 {
                     Data = bytes,
-                    PacketFlags = PacketFlags.None
+                    PacketFlags = PacketFlags.Reliable
                 },
                 Peer = sendInstantiateCommand.Peer,
                 ChannelId = 0
@@ -101,7 +101,7 @@ namespace GSUnity.Netcode.Serializers
             var bytes = new byte[length];
             bitBuffer.ToArray(bytes);
             
-            _sender.SendQueue.Enqueue(new SendNetworkData
+            _client.SendQueue.Enqueue(new SendNetworkData
             {
                 Data = new NetworkPacketData
                 {

@@ -35,9 +35,9 @@ namespace GSUnity.Client.Ecs.Systems.Netcode
                     //Debug.Log($"Received destroy entity command: {receiveDestroyEntityCommand.Data.Id.Value}");
                 }
 
-                while (netcodeClientRef.Listener.ReceiveConnectionQueue.TryDequeue(out var @event))
+                while (netcodeClientRef.Client.ReceiveConnectionQueue.TryDequeue(out var @event))
                 {
-                    Debug.Log($"{netcodeClientRef.Listener.Name} Received connection event: {@event.Type}");
+                    Debug.Log($"{netcodeClientRef.Client.Name} Received connection event: {@event.Type}");
                 }
                 
                 Debug.Log($"Instantiates: {instantiationCount} Destroys: {destroyCount}");
