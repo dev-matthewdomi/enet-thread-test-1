@@ -630,7 +630,6 @@ namespace ENet {
 			var result = Native.enet_host_service(nativeHost, out nativeEvent, (uint)timeout);
 			
 			if (result <= 0) {
-				Debug.Log($"Result: {result}");
 				@event = default(Event);
 
 				return result;
